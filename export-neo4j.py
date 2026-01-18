@@ -12,7 +12,7 @@ server = os.environ["TPBDD_SERVER"]
 database = os.environ["TPBDD_DB"]
 username = os.environ["TPBDD_USERNAME"]
 password = os.environ["TPBDD_PASSWORD"]
-driver= os.environ["ODBC_DRIVER"]
+driver = os.environ["ODBC_DRIVER"]
 
 neo4j_server = os.environ["TPBDD_NEO4J_SERVER"]
 neo4j_user = os.environ["TPBDD_NEO4J_USER"]
@@ -45,6 +45,7 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
         for row in rows:
             # Créer un objet Node avec comme label Film et les propriétés adéquates
             # A COMPLETER
+            n = Node("Film", idFilm=row[0], primaryTitle=row[1], startYear=row[2])
             importData.append(n)
             i += 1
 
@@ -55,15 +56,36 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
         except Exception as error:
             print(error)
 
-    # Names
+    # Artists
     # En vous basant sur ce qui a été fait dans la section précédente, exportez les données de la table tArtist
     # A COMPLETER
+    exportedCount = 0
+    cursor.execute("SELECT COUNT(1) FROM tArtist")
+    totalCount = cursor.fetchval()
+    cursor.execute("SELECT idArtist, primaryName, birthYear FROM tArtist")
+    while True:
+        importData = []
+        rows = cursor.fetchmany(BATCH_SIZE)
+        if not rows:
+            break
+
+        for row in rows:
+            # A COMPLETER: créer un Node Artist
+            n = Node("Artist", idArtist=row[0], primaryName=row[1], birthYear=row[2])
+            importData.append(n)
+
+        try:
+            create_nodes(graph.auto(), importData, labels={"Artist"})
+            exportedCount += len(rows)
+            print(f"{exportedCount}/{totalCount} artist records exported to Neo4j")
+        except Exception as error:
+            print(error)
 
     try:
         print("Indexing Film nodes...")
-        graph.run("CREATE INDEX ON :Film(idFilm)")
+        graph.run("CREATE INDEX FOR (f:Film) ON (f.idFilm)")
         print("Indexing Name (Artist) nodes...")
-        graph.run("CREATE INDEX ON :Artist(idArtist)")
+        graph.run("CREATE INDEX FOR (a:Artist) ON (a.idArtist)")
     except Exception as error:
         print(error)
 
@@ -90,7 +112,14 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
                 # https://py2neo.org/2021.1/bulk/index.html
                 # ATTENTION: remplacez les espaces par des _ pour nommer les types de relation
                 # A COMPLETER
-                None # Remplacez None par votre code
+                rel_type = cat.replace(" ", "_").upper()
+                rels = importData[cat]
+                if rels:
+                    # create_relationships(tx, data, rel_type, start_node_key=None, end_node_key=None, keys=None)
+                    # match start and end by their identifying properties
+                    start_key = ("Artist", "idArtist")
+                    end_key = ("Film", "idFilm")
+                    create_relationships(graph.auto(), rels, rel_type, start_node_key=start_key, end_node_key=end_key)
             exportedCount += len(rows)
             print(f"{exportedCount}/{totalCount} relationships exported to Neo4j")
         except Exception as error:
